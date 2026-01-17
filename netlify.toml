@@ -1,0 +1,6 @@
+[[redirects]]
+  from = "/*"
+  to = "https://puter.com/app/browser"
+  status = 200
+  force = true
+  query = true
