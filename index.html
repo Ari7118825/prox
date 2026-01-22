@@ -2,85 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scramjet Portal</title>
+    <title>Scramjet Netlify Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        body { background-color: #09090b; }
-        iframe { background: white; width: 100%; height: 100%; border: none; }
-        .glass { background: rgba(24, 24, 27, 0.8); backdrop-filter: blur(12px); }
-    </style>
 </head>
-<body class="text-zinc-100 font-sans h-screen flex flex-col overflow-hidden">
+<body class="bg-zinc-950 text-white h-screen flex flex-col">
 
-    <header class="glass border-b border-zinc-800 p-4 flex items-center justify-between shadow-2xl z-50">
-        <div class="flex items-center gap-3">
-            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/20">
-                <i class="fa-solid fa-bolt-lightning text-white text-sm"></i>
-            </div>
-            <h1 class="text-sm font-bold tracking-tighter uppercase text-zinc-400">Scramjet Portal</h1>
-        </div>
-        
-        <div class="flex-1 max-w-2xl mx-8">
-            <div class="relative flex items-center bg-zinc-900/50 rounded-full border border-zinc-800 px-5 py-2 group focus-within:border-blue-500/50 transition-all">
-                <i class="fa-solid fa-link text-zinc-600 mr-3 text-xs"></i>
-                <input id="urlInput" type="text" 
-                       class="bg-transparent border-none outline-none text-sm w-full text-zinc-200 placeholder-zinc-600" 
-                       placeholder="Enter destination URL...">
-                <button onclick="navigate()" class="ml-2 text-zinc-500 hover:text-blue-400 transition-colors">
-                    <i class="fa-solid fa-arrow-right"></i>
-                </button>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-4">
-            <button onclick="location.reload()" class="text-zinc-500 hover:text-white text-xs transition-colors">
-                <i class="fa-solid fa-arrow-rotate-right"></i>
-            </button>
-        </div>
+    <header class="p-4 bg-zinc-900 border-b border-zinc-800 flex gap-4">
+        <input id="targetInput" type="text" class="flex-1 bg-zinc-800 border border-zinc-700 rounded px-4 py-2 outline-none focus:border-blue-500" placeholder="Enter URL (e.g., networkchuck.com)">
+        <button onclick="loadSite()" class="bg-blue-600 px-6 py-2 rounded font-bold hover:bg-blue-500">GO</button>
     </header>
 
-    <main class="flex-1 relative">
-        <div id="welcome" class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 z-10 transition-opacity duration-500">
-            <div class="text-center">
-                <div class="inline-flex p-4 rounded-full bg-blue-500/10 mb-6">
-                    <i class="fa-solid fa-shield-halved text-blue-500 text-4xl"></i>
-                </div>
-                <h2 class="text-2xl font-semibold mb-2 text-white">Scramjet Hub Ready</h2>
-                <p class="text-zinc-500 text-sm max-w-xs mx-auto">Enter any URL above to fetch it securely through your private zrok tunnel.</p>
-            </div>
-        </div>
-        <iframe id="browserFrame" src="about:blank"></iframe>
+    <main class="flex-1 bg-white">
+        <iframe id="viewer" class="w-full h-full border-none"></iframe>
     </main>
 
     <script>
-        // Adjust this if your zrok path changes
-        const SCRAMJET_BASE = 'https://yumiscramjetafc02c3096bf.share.zrok.io/scramjet/';
-        const frame = document.getElementById('browserFrame');
-        const welcome = document.getElementById('welcome');
-        const input = document.getElementById('urlInput');
-
-        function navigate() {
-            let url = input.value.trim();
-            if (!url) return;
-
-            // Simple URL normalization
-            if (!url.startsWith('http')) {
-                url = 'https://' + url;
-            }
-
-            // Hide the welcome screen and load the site through your Scramjet path
-            welcome.style.opacity = '0';
-            setTimeout(() => welcome.classList.add('hidden'), 500);
+        function loadSite() {
+            const input = document.getElementById('targetInput').value;
+            const viewer = document.getElementById('viewer');
             
-            frame.src = SCRAMJET_BASE + encodeURIComponent(url);
-        }
+            if (!input) return;
 
-        // Allow 'Enter' key to trigger navigation
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') navigate();
-        });
+            // Route the request through your Netlify Function
+            const proxyEndpoint = `/.netlify/functions/proxy?url=${encodeURIComponent(input)}`;
+            viewer.src = proxyEndpoint;
+        }
     </script>
 </body>
 </html>
