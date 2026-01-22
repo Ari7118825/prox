@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scramjet Custom UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-online { color: #10b981; }
+        .status-offline { color: #ef4444; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans">
+
+    <div class="max-w-4xl mx-auto p-8">
+        <header class="mb-10 border-b border-gray-700 pb-5">
+            <h1 class="text-3xl font-bold">Scramjet Hub Dashboard</h1>
+            <p class="text-gray-400">Connected to: <span class="text-blue-400 break-all" id="apiUrlText"></span></p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 shadow-lg">
+                <h2 class="text-sm uppercase tracking-wider text-gray-400 mb-2">Hub Status</h2>
+                <div id="connectionStatus" class="text-2xl font-semibold italic text-gray-500 font-mono">Checking...</div>
+            </div>
+            
+            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 shadow-lg">
+                <h2 class="text-sm uppercase tracking-wider text-gray-400 mb-2">Action</h2>
+                <button onclick="fetchInstances()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors w-full">
+                    Refresh Instances
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg border border-gray-700 shadow-lg overflow-hidden">
+            <div class="p-4 border-b border-gray-700 bg-gray-750">
+                <h2 class="text-xl font-semibold">Active Sequences/Instances</h2>
+            </div>
+            <div id="instanceList" class="p-4 text-gray-400">
+                Click "Refresh" to load data from zrok...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // YOUR ZROK URL
+        const BASE_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io';
+        document.getElementById('apiUrlText').innerText = BASE_URL;
+
+        async function checkConnection() {
+            const statusEl = document.getElementById('connectionStatus');
+            try {
+                // Testing the API health endpoint
+                const response = await fetch(`${BASE_URL}/api/v1/health`);
+                if (response.ok) {
+                    statusEl.innerText = "ONLINE";
+                    statusEl.className = "text-2xl font-semibold status-online";
+                } else {
+                    throw new Error();
+                }
+            } catch (err) {
+                statusEl.innerText = "OFFLINE / ERROR";
+                statusEl.className = "text-2xl font-semibold status-offline";
+            }
+        }
+
+        async function fetchInstances() {
+            const listEl = document.getElementById('instanceList');
+            listEl.innerHTML = '<div class="animate-pulse">Loading instances...</div>';
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/instance`);
+                const instances = await response.json();
+                
+                if (instances.length === 0) {
+                    listEl.innerHTML = '<p class="py-4 text-center">No active instances found.</p>';
+                    return;
+                }
+
+                let html = '<table class="w-full text-left"><thead><tr class="text-gray-500 border-b border-gray-700"><th class="pb-2">ID</th><th class="pb-2">Status</th></tr></thead><tbody class="divide-y divide-gray-700">';
+                
+                instances.forEach(inst => {
+                    html += `
+                        <tr>
+                            <td class="py-3 font-mono text-sm">${inst.id}</td>
+                            <td class="py-3"><span class="px-2 py-1 bg-green-900 text-green-300 rounded text-xs">${inst.status}</span></td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table>';
+                listEl.innerHTML = html;
+
+            } catch (err) {
+                listEl.innerHTML = `<div class="p-4 bg-red-900/20 text-red-400 rounded">Error: Could not connect to the API. Check zrok and CORS settings.</div>`;
+            }
+        }
+
+        // Initial load
+        checkConnection();
+        fetchInstances();
+    </script>
+</body>
+</html>
