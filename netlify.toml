@@ -1,6 +1,0 @@
-[[redirects]]
-  from = "/*"
-  to = "https://puter.noble-rivkah-yumicode-22aa6793.koyeb.app/"
-  status = 200
-  force = true
-  query = true
