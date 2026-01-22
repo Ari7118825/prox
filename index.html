@@ -2,61 +2,76 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Scramjet Direct DOM Sniffer</title>
+    <title>Scramjet Codetabs Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-gray-200 flex h-screen overflow-hidden">
+<body class="bg-zinc-950 text-zinc-300 flex h-screen overflow-hidden">
 
-    <div class="w-96 bg-zinc-900 border-r border-zinc-700 flex flex-col shadow-xl z-50">
-        <div class="p-4 bg-zinc-800 border-b border-zinc-700">
-            <h2 class="text-green-400 font-bold uppercase text-xs tracking-widest">Live Traffic Monitor</h2>
+    <aside class="w-80 bg-zinc-900 border-r border-zinc-800 flex flex-col shadow-2xl">
+        <div class="p-4 border-b border-zinc-800">
+            <h1 class="text-blue-400 font-mono font-bold uppercase text-xs tracking-widest">Codetabs Traffic Sniffer</h1>
         </div>
-        <div id="traffic-logs" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
-            <div class="text-gray-500 italic">Waiting for Scramjet to load...</div>
+        
+        <div id="log-entries" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-2">
+            <div class="text-zinc-600 italic">Waiting for injection...</div>
         </div>
-    </div>
 
-    <div class="flex-1 relative overflow-auto bg-white" id="scramjet-viewport">
+        <div class="p-4 border-t border-zinc-800">
+            <button onclick="location.reload()" class="w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 text-xs py-2 rounded border border-blue-500/30 transition">
+                Reset Monitor
+            </button>
         </div>
+    </aside>
+
+    <main class="flex-1 relative overflow-auto bg-white" id="display-area">
+        <div id="loader" class="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-50">
+            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-4"></div>
+            <p class="text-zinc-500 text-sm italic">Fetching via Codetabs Proxy...</p>
+        </div>
+        <div id="scramjet-root"></div>
+    </main>
 
     <script>
-        const TARGET_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io/';
-        const logBox = document.getElementById('traffic-logs');
+        const ZROK_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io/';
+        const CODETABS_PROXY = 'https://api.codetabs.com/v1/proxy?quest=';
+        const logBox = document.getElementById('log-entries');
 
-        // 1. GLOBAL INTERCEPTOR
-        // We catch all traffic before it leaves the browser
-        const { fetch: originalFetch } = window;
+        // 1. THE SNIFFER: Override fetch to catch outgoing API calls
+        const originalFetch = window.fetch;
         window.fetch = async (...args) => {
             const url = args[0];
-            const logEntry = document.createElement('div');
-            logEntry.className = "p-1 bg-zinc-800 border-l border-blue-500 mb-1 break-all";
-            logEntry.innerHTML = `<span class="text-blue-400">[REQ]</span> ${url}`;
-            logBox.prepend(logEntry);
+            
+            // Add a log entry for every network request detected
+            const entry = document.createElement('div');
+            entry.className = "p-2 bg-zinc-800/50 border-l border-blue-500 rounded-sm break-all";
+            entry.innerHTML = `
+                <div class="text-blue-500 font-bold mb-1">OUTGOING REQ:</div>
+                <div class="text-zinc-300">${url}</div>
+            `;
+            logBox.prepend(entry);
 
             return originalFetch.apply(window, args);
         };
 
-        // 2. DIRECT DOM INJECTOR
-        async function injectWebsite() {
+        // 2. THE INJECTOR: Load the site via Codetabs
+        async function runInjection() {
             try {
-                // Fetching the raw website content directly
-                const response = await originalFetch(TARGET_URL);
-                const htmlText = await response.text();
+                // Fetch the HTML through Codetabs
+                const response = await originalFetch(CODETABS_PROXY + encodeURIComponent(ZROK_URL));
+                if (!response.ok) throw new Error("Proxy failed");
+                const html = await response.text();
 
-                const viewport = document.getElementById('scramjet-viewport');
-                
-                // Fix relative paths (CSS/JS) by setting the BASE tag
-                const baseTag = document.createElement('base');
-                baseTag.href = TARGET_URL;
-                document.head.appendChild(baseTag);
+                // Set Base URL so assets (CSS/JS) load from zrok correctly
+                const base = document.createElement('base');
+                base.href = ZROK_URL;
+                document.head.appendChild(base);
 
-                // Inject the HTML string into the viewport
-                viewport.innerHTML = htmlText;
+                // Inject HTML
+                const root = document.getElementById('scramjet-root');
+                root.innerHTML = html;
 
-                // Re-trigger script execution
-                // Simply setting innerHTML doesn't run <script> tags
-                const scripts = Array.from(viewport.querySelectorAll('script'));
-                for (const oldScript of scripts) {
+                // Manually trigger scripts (browsers don't run scripts injected via innerHTML)
+                Array.from(root.querySelectorAll('script')).forEach(oldScript => {
                     const newScript = document.createElement('script');
                     Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
                     
@@ -68,23 +83,16 @@
                     
                     document.body.appendChild(newScript);
                     oldScript.parentNode.removeChild(oldScript);
-                }
+                });
 
-                const msg = document.createElement('div');
-                msg.className = "text-green-500 p-2 font-bold";
-                msg.innerText = "SUCCESS: DOM LOADED";
-                logBox.prepend(msg);
+                document.getElementById('loader').remove();
 
             } catch (err) {
-                const errorEntry = document.createElement('div');
-                errorEntry.className = "text-red-500 p-2";
-                errorEntry.innerText = "CORS ERROR: The server blocked direct fetching. You must enable CORS on Scramjet.";
-                logBox.prepend(errorEntry);
-                console.error("Fetch failed:", err);
+                logBox.innerHTML = `<div class="text-red-500 p-2">Error: ${err.message}</div>`;
             }
         }
 
-        injectWebsite();
+        runInjection();
     </script>
 </body>
 </html>
