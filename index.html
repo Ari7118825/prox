@@ -2,93 +2,52 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Scramjet Deep Injection Monitor</title>
+    <title>Scramjet with DevTools Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-zinc-950 text-zinc-300 flex h-screen overflow-hidden">
+<body class="bg-black">
 
-    <aside class="w-80 bg-zinc-900 border-r border-zinc-800 flex flex-col shadow-2xl z-50">
-        <div class="p-4 border-b border-zinc-800 bg-zinc-900/50">
-            <h1 class="text-blue-400 font-mono font-bold uppercase text-xs">Deep Sniffer</h1>
-        </div>
-        <div id="log-entries" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
-            <div class="text-zinc-600 italic">Initializing rewriter...</div>
-        </div>
-    </aside>
-
-    <main class="flex-1 relative overflow-auto bg-white" id="scramjet-root">
-        <div id="loader" class="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-40">
-            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-4"></div>
-            <p class="text-zinc-500 text-sm">Rewriting DOM Resources...</p>
-        </div>
-    </main>
+    <div id="scramjet-root" class="w-screen h-screen bg-white overflow-auto"></div>
 
     <script>
+        // 2. Initialize the DevTools Simulator
+        eruda.init();
+        eruda.show(); // This opens the panel immediately
+        console.log("DevTools Simulator Active. Click the 'Network' tab to monitor zrok traffic.");
+
         const ZROK_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io';
         const PROXY = 'https://api.codetabs.com/v1/proxy?quest=';
-        const logBox = document.getElementById('log-entries');
 
-        function addLog(url, type = 'REQ') {
-            const entry = document.createElement('div');
-            entry.className = "p-1 bg-zinc-800/50 border-l border-blue-500 mb-1 break-all";
-            entry.innerHTML = `<span class="text-blue-500 font-bold">[${type}]</span> ${url}`;
-            logBox.prepend(entry);
-        }
-
-        // 1. MONKEY PATCH FETCH
-        // This handles all future API calls made by Scramjet's JS
-        const originalFetch = window.fetch;
-        window.fetch = async (...args) => {
-            let url = args[0];
-            // If it's a relative URL, make it absolute to zrok
-            if (url.startsWith('/')) url = ZROK_URL + url;
-            
-            addLog(url, 'API');
-
-            // Redirect the fetch through the proxy
-            const proxiedUrl = PROXY + encodeURIComponent(url);
-            return originalFetch(proxiedUrl, args[1]);
-        };
-
-        // 2. RESOURCE REWRITER
-        async function startDeepInjection() {
+        // 3. Deep Injection Logic
+        async function loadWithDevTools() {
             try {
-                const response = await originalFetch(PROXY + encodeURIComponent(ZROK_URL));
+                const response = await fetch(PROXY + encodeURIComponent(ZROK_URL));
                 let html = await response.text();
 
-                // Create a virtual document to manipulate the HTML
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
 
-                // Helper to fix URLs
-                const proxyUrl = (original) => {
-                    if (!original) return original;
-                    if (original.startsWith('data:') || original.startsWith('http')) return original;
-                    const absolute = original.startsWith('/') ? ZROK_URL + original : ZROK_URL + '/' + original;
+                const proxyUrl = (url) => {
+                    if (!url || url.startsWith('data:') || url.startsWith('http')) return url;
+                    const absolute = url.startsWith('/') ? ZROK_URL + url : ZROK_URL + '/' + url;
                     return PROXY + encodeURIComponent(absolute);
                 };
 
-                // Rewrite Stylesheets
-                doc.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
-                    link.href = proxyUrl(link.getAttribute('href'));
-                });
+                // Rewrite all resources so they show up in the simulator's Network tab
+                doc.querySelectorAll('link[rel="stylesheet"]').forEach(el => el.href = proxyUrl(el.getAttribute('href')));
+                doc.querySelectorAll('script[src]').forEach(el => el.src = proxyUrl(el.getAttribute('src')));
+                doc.querySelectorAll('img').forEach(el => el.src = proxyUrl(el.getAttribute('src')));
 
-                // Rewrite Scripts
-                doc.querySelectorAll('script[src]').forEach(script => {
-                    script.src = proxyUrl(script.getAttribute('src'));
-                });
-
-                // Rewrite Images
-                doc.querySelectorAll('img').forEach(img => {
-                    img.src = proxyUrl(img.getAttribute('src'));
-                });
-
-                // Inject rewritten content
                 const root = document.getElementById('scramjet-root');
                 root.innerHTML = doc.body.innerHTML;
-                document.head.append(...doc.head.childNodes);
+                
+                // Set base for any background requests
+                const base = document.createElement('base');
+                base.href = ZROK_URL;
+                document.head.appendChild(base);
 
-                // Execute Scripts manually
+                // Execute scripts
                 doc.querySelectorAll('script').forEach(oldScript => {
                     const newScript = document.createElement('script');
                     if (oldScript.src) {
@@ -99,16 +58,12 @@
                     document.body.appendChild(newScript);
                 });
 
-                document.getElementById('loader').remove();
-                addLog(ZROK_URL, 'SUCCESS');
-
             } catch (err) {
-                console.error(err);
-                addLog(err.message, 'ERROR');
+                console.error("Failed to inject Scramjet:", err);
             }
         }
 
-        startDeepInjection();
+        loadWithDevTools();
     </script>
 </body>
 </html>
