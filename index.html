@@ -2,97 +2,113 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Scramjet Codetabs Monitor</title>
+    <title>Scramjet Deep Injection Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-zinc-300 flex h-screen overflow-hidden">
 
-    <aside class="w-80 bg-zinc-900 border-r border-zinc-800 flex flex-col shadow-2xl">
-        <div class="p-4 border-b border-zinc-800">
-            <h1 class="text-blue-400 font-mono font-bold uppercase text-xs tracking-widest">Codetabs Traffic Sniffer</h1>
+    <aside class="w-80 bg-zinc-900 border-r border-zinc-800 flex flex-col shadow-2xl z-50">
+        <div class="p-4 border-b border-zinc-800 bg-zinc-900/50">
+            <h1 class="text-blue-400 font-mono font-bold uppercase text-xs">Deep Sniffer</h1>
         </div>
-        
-        <div id="log-entries" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-2">
-            <div class="text-zinc-600 italic">Waiting for injection...</div>
-        </div>
-
-        <div class="p-4 border-t border-zinc-800">
-            <button onclick="location.reload()" class="w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 text-xs py-2 rounded border border-blue-500/30 transition">
-                Reset Monitor
-            </button>
+        <div id="log-entries" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
+            <div class="text-zinc-600 italic">Initializing rewriter...</div>
         </div>
     </aside>
 
-    <main class="flex-1 relative overflow-auto bg-white" id="display-area">
-        <div id="loader" class="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-50">
+    <main class="flex-1 relative overflow-auto bg-white" id="scramjet-root">
+        <div id="loader" class="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center z-40">
             <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-4"></div>
-            <p class="text-zinc-500 text-sm italic">Fetching via Codetabs Proxy...</p>
+            <p class="text-zinc-500 text-sm">Rewriting DOM Resources...</p>
         </div>
-        <div id="scramjet-root"></div>
     </main>
 
     <script>
-        const ZROK_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io/';
-        const CODETABS_PROXY = 'https://api.codetabs.com/v1/proxy?quest=';
+        const ZROK_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io';
+        const PROXY = 'https://api.codetabs.com/v1/proxy?quest=';
         const logBox = document.getElementById('log-entries');
 
-        // 1. THE SNIFFER: Override fetch to catch outgoing API calls
+        function addLog(url, type = 'REQ') {
+            const entry = document.createElement('div');
+            entry.className = "p-1 bg-zinc-800/50 border-l border-blue-500 mb-1 break-all";
+            entry.innerHTML = `<span class="text-blue-500 font-bold">[${type}]</span> ${url}`;
+            logBox.prepend(entry);
+        }
+
+        // 1. MONKEY PATCH FETCH
+        // This handles all future API calls made by Scramjet's JS
         const originalFetch = window.fetch;
         window.fetch = async (...args) => {
-            const url = args[0];
+            let url = args[0];
+            // If it's a relative URL, make it absolute to zrok
+            if (url.startsWith('/')) url = ZROK_URL + url;
             
-            // Add a log entry for every network request detected
-            const entry = document.createElement('div');
-            entry.className = "p-2 bg-zinc-800/50 border-l border-blue-500 rounded-sm break-all";
-            entry.innerHTML = `
-                <div class="text-blue-500 font-bold mb-1">OUTGOING REQ:</div>
-                <div class="text-zinc-300">${url}</div>
-            `;
-            logBox.prepend(entry);
+            addLog(url, 'API');
 
-            return originalFetch.apply(window, args);
+            // Redirect the fetch through the proxy
+            const proxiedUrl = PROXY + encodeURIComponent(url);
+            return originalFetch(proxiedUrl, args[1]);
         };
 
-        // 2. THE INJECTOR: Load the site via Codetabs
-        async function runInjection() {
+        // 2. RESOURCE REWRITER
+        async function startDeepInjection() {
             try {
-                // Fetch the HTML through Codetabs
-                const response = await originalFetch(CODETABS_PROXY + encodeURIComponent(ZROK_URL));
-                if (!response.ok) throw new Error("Proxy failed");
-                const html = await response.text();
+                const response = await originalFetch(PROXY + encodeURIComponent(ZROK_URL));
+                let html = await response.text();
 
-                // Set Base URL so assets (CSS/JS) load from zrok correctly
-                const base = document.createElement('base');
-                base.href = ZROK_URL;
-                document.head.appendChild(base);
+                // Create a virtual document to manipulate the HTML
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
 
-                // Inject HTML
+                // Helper to fix URLs
+                const proxyUrl = (original) => {
+                    if (!original) return original;
+                    if (original.startsWith('data:') || original.startsWith('http')) return original;
+                    const absolute = original.startsWith('/') ? ZROK_URL + original : ZROK_URL + '/' + original;
+                    return PROXY + encodeURIComponent(absolute);
+                };
+
+                // Rewrite Stylesheets
+                doc.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+                    link.href = proxyUrl(link.getAttribute('href'));
+                });
+
+                // Rewrite Scripts
+                doc.querySelectorAll('script[src]').forEach(script => {
+                    script.src = proxyUrl(script.getAttribute('src'));
+                });
+
+                // Rewrite Images
+                doc.querySelectorAll('img').forEach(img => {
+                    img.src = proxyUrl(img.getAttribute('src'));
+                });
+
+                // Inject rewritten content
                 const root = document.getElementById('scramjet-root');
-                root.innerHTML = html;
+                root.innerHTML = doc.body.innerHTML;
+                document.head.append(...doc.head.childNodes);
 
-                // Manually trigger scripts (browsers don't run scripts injected via innerHTML)
-                Array.from(root.querySelectorAll('script')).forEach(oldScript => {
+                // Execute Scripts manually
+                doc.querySelectorAll('script').forEach(oldScript => {
                     const newScript = document.createElement('script');
-                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-                    
                     if (oldScript.src) {
-                        newScript.src = oldScript.src;
+                        newScript.src = proxyUrl(oldScript.getAttribute('src'));
                     } else {
                         newScript.textContent = oldScript.textContent;
                     }
-                    
                     document.body.appendChild(newScript);
-                    oldScript.parentNode.removeChild(oldScript);
                 });
 
                 document.getElementById('loader').remove();
+                addLog(ZROK_URL, 'SUCCESS');
 
             } catch (err) {
-                logBox.innerHTML = `<div class="text-red-500 p-2">Error: ${err.message}</div>`;
+                console.error(err);
+                addLog(err.message, 'ERROR');
             }
         }
 
-        runInjection();
+        startDeepInjection();
     </script>
 </body>
 </html>
