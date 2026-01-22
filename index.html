@@ -3,102 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scramjet Custom UI</title>
+    <title>Scramjet API Hunter</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .status-online { color: #10b981; }
-        .status-offline { color: #ef4444; }
-    </style>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans">
+<body class="bg-black text-green-400 font-mono p-4">
 
-    <div class="max-w-4xl mx-auto p-8">
-        <header class="mb-10 border-b border-gray-700 pb-5">
-            <h1 class="text-3xl font-bold">Scramjet Hub Dashboard</h1>
-            <p class="text-gray-400">Connected to: <span class="text-blue-400 break-all" id="apiUrlText"></span></p>
-        </header>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 shadow-lg">
-                <h2 class="text-sm uppercase tracking-wider text-gray-400 mb-2">Hub Status</h2>
-                <div id="connectionStatus" class="text-2xl font-semibold italic text-gray-500 font-mono">Checking...</div>
-            </div>
-            
-            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 shadow-lg">
-                <h2 class="text-sm uppercase tracking-wider text-gray-400 mb-2">Action</h2>
-                <button onclick="fetchInstances()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded transition-colors w-full">
-                    Refresh Instances
-                </button>
-            </div>
+    <div class="max-w-3xl mx-auto">
+        <h1 class="text-2xl font-bold mb-4 border-b border-green-800 pb-2">Scramjet Connection Debugger</h1>
+        
+        <div class="bg-gray-900 p-4 rounded border border-green-900 mb-6">
+            <p class="mb-2">Target Host: <span class="text-white">yumiscramjetafc02c3096bf.share.zrok.io</span></p>
+            <div id="masterStatus" class="text-lg font-bold">Status: Initializing...</div>
         </div>
 
-        <div class="bg-gray-800 rounded-lg border border-gray-700 shadow-lg overflow-hidden">
-            <div class="p-4 border-b border-gray-700 bg-gray-750">
-                <h2 class="text-xl font-semibold">Active Sequences/Instances</h2>
+        <div class="grid grid-cols-1 gap-4">
+            <div class="bg-gray-900 p-4 rounded border border-gray-800">
+                <h2 class="text-sm text-gray-500 uppercase mb-3">Endpoint Discovery Logs</h2>
+                <div id="logConsole" class="h-64 overflow-y-auto text-xs space-y-1">
+                    </div>
             </div>
-            <div id="instanceList" class="p-4 text-gray-400">
-                Click "Refresh" to load data from zrok...
+
+            <div id="apiResults" class="bg-gray-900 p-4 rounded border border-gray-800 hidden">
+                <h2 class="text-sm text-gray-500 uppercase mb-3">Found API Data</h2>
+                <pre id="jsonData" class="text-blue-300 text-xs overflow-x-auto"></pre>
             </div>
         </div>
+        
+        <button onclick="startDiscovery()" class="mt-6 w-full bg-green-700 hover:bg-green-600 text-black font-bold py-3 rounded transition-all">
+            RESCAN ENDPOINTS
+        </button>
     </div>
 
     <script>
-        // YOUR ZROK URL
-        const BASE_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io';
-        document.getElementById('apiUrlText').innerText = BASE_URL;
+        const ZROK_HOST = 'https://yumiscramjetafc02c3096bf.share.zrok.io';
+        // Common Scramjet STH paths to check
+        const PATHS_TO_TEST = [
+            '/api/v1',
+            '/api/v1/info',
+            '/api/v1/health',
+            '/api/v1/instance',
+            '/api/v1/sequence',
+            '/api/v2'
+        ];
 
-        async function checkConnection() {
-            const statusEl = document.getElementById('connectionStatus');
-            try {
-                // Testing the API health endpoint
-                const response = await fetch(`${BASE_URL}/api/v1/health`);
-                if (response.ok) {
-                    statusEl.innerText = "ONLINE";
-                    statusEl.className = "text-2xl font-semibold status-online";
-                } else {
-                    throw new Error();
+        const logConsole = document.getElementById('logConsole');
+        const masterStatus = document.getElementById('masterStatus');
+
+        function addLog(msg, type = 'info') {
+            const div = document.createElement('div');
+            const colors = { info: 'text-gray-400', success: 'text-green-400', error: 'text-red-500' };
+            div.className = colors[type];
+            div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logConsole.appendChild(div);
+            logConsole.scrollTop = logConsole.scrollHeight;
+        }
+
+        async function startDiscovery() {
+            addLog("Starting discovery on " + ZROK_HOST);
+            masterStatus.innerText = "Status: Hunting for API...";
+            let foundAny = false;
+
+            for (const path of PATHS_TO_TEST) {
+                const target = ZROK_HOST + path;
+                addLog(`Testing ${path}...`);
+                
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                    const response = await fetch(target, { 
+                        method: 'GET',
+                        mode: 'cors', // Crucial for Netlify -> zrok
+                        signal: controller.signal 
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        addLog(`✅ FOUND API at ${path}!`, 'success');
+                        document.getElementById('apiResults').classList.remove('hidden');
+                        document.getElementById('jsonData').innerText = JSON.stringify(data, null, 2);
+                        masterStatus.innerText = `Status: Connected via ${path}`;
+                        foundAny = true;
+                        break; 
+                    } else {
+                        addLog(`❌ Path ${path} returned ${response.status}`, 'error');
+                    }
+                } catch (err) {
+                    addLog(`❌ Path ${path} failed: ${err.message}`, 'error');
                 }
-            } catch (err) {
-                statusEl.innerText = "OFFLINE / ERROR";
-                statusEl.className = "text-2xl font-semibold status-offline";
+            }
+
+            if (!foundAny) {
+                masterStatus.innerText = "Status: FAILED - No API Found";
+                addLog("Check if Scramjet Hub is running with '--api-port 80' or if zrok is tunneling the correct port.", "error");
             }
         }
 
-        async function fetchInstances() {
-            const listEl = document.getElementById('instanceList');
-            listEl.innerHTML = '<div class="animate-pulse">Loading instances...</div>';
-            
-            try {
-                const response = await fetch(`${BASE_URL}/api/v1/instance`);
-                const instances = await response.json();
-                
-                if (instances.length === 0) {
-                    listEl.innerHTML = '<p class="py-4 text-center">No active instances found.</p>';
-                    return;
-                }
-
-                let html = '<table class="w-full text-left"><thead><tr class="text-gray-500 border-b border-gray-700"><th class="pb-2">ID</th><th class="pb-2">Status</th></tr></thead><tbody class="divide-y divide-gray-700">';
-                
-                instances.forEach(inst => {
-                    html += `
-                        <tr>
-                            <td class="py-3 font-mono text-sm">${inst.id}</td>
-                            <td class="py-3"><span class="px-2 py-1 bg-green-900 text-green-300 rounded text-xs">${inst.status}</span></td>
-                        </tr>
-                    `;
-                });
-                
-                html += '</tbody></table>';
-                listEl.innerHTML = html;
-
-            } catch (err) {
-                listEl.innerHTML = `<div class="p-4 bg-red-900/20 text-red-400 rounded">Error: Could not connect to the API. Check zrok and CORS settings.</div>`;
-            }
-        }
-
-        // Initial load
-        checkConnection();
-        fetchInstances();
+        // Auto-start on load
+        window.onload = startDiscovery;
     </script>
 </body>
 </html>
