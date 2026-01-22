@@ -2,103 +2,89 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Scramjet Virtual DOM Monitor</title>
+    <title>Scramjet Direct DOM Sniffer</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Prevents the injected Scramjet CSS from ruining your sidebar */
-        #scramjet-container { all: revert; position: relative; }
-        #log-entries::-webkit-scrollbar { width: 4px; }
-        #log-entries::-webkit-scrollbar-thumb { background: #333; }
-    </style>
 </head>
-<body class="bg-zinc-950 text-zinc-300 flex h-screen overflow-hidden">
+<body class="bg-black text-gray-200 flex h-screen overflow-hidden">
 
-    <aside class="w-80 bg-zinc-900 border-r border-zinc-800 flex flex-col shadow-2xl z-50">
-        <div class="p-4 border-b border-zinc-800 bg-zinc-900/50">
-            <h1 class="text-green-500 font-mono font-bold uppercase tracking-tighter">Traffic Sniffer</h1>
-            <p class="text-[10px] text-zinc-500 italic">Capturing virtual DOM requests...</p>
+    <div class="w-96 bg-zinc-900 border-r border-zinc-700 flex flex-col shadow-xl z-50">
+        <div class="p-4 bg-zinc-800 border-b border-zinc-700">
+            <h2 class="text-green-400 font-bold uppercase text-xs tracking-widest">Live Traffic Monitor</h2>
         </div>
-        
-        <div id="log-entries" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
-            <div class="text-zinc-600">Initializing sniffer...</div>
+        <div id="traffic-logs" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
+            <div class="text-gray-500 italic">Waiting for Scramjet to load...</div>
         </div>
+    </div>
 
-        <div class="p-4 bg-zinc-900 border-t border-zinc-800">
-            <button onclick="location.reload()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs py-2 rounded transition">
-                Clear & Reload
-            </button>
+    <div class="flex-1 relative overflow-auto bg-white" id="scramjet-viewport">
         </div>
-    </aside>
-
-    <main class="flex-1 relative overflow-auto bg-white">
-        <div id="loading-overlay" class="absolute inset-0 bg-zinc-950 flex items-center justify-center z-40">
-            <div class="text-center">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
-                <p class="text-zinc-500 animate-pulse">Fetching zrok DOM...</p>
-            </div>
-        </div>
-        <div id="scramjet-root"></div>
-    </main>
 
     <script>
-        const ZROK_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io/';
-        const logContainer = document.getElementById('log-entries');
+        const TARGET_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io/';
+        const logBox = document.getElementById('traffic-logs');
 
-        // 1. THE SNIFFER: Override Global Fetch before loading anything
-        const originalFetch = window.fetch;
+        // 1. GLOBAL INTERCEPTOR
+        // We catch all traffic before it leaves the browser
+        const { fetch: originalFetch } = window;
         window.fetch = async (...args) => {
             const url = args[0];
-            const timestamp = new Date().toLocaleTimeString().split(' ')[0];
-            
-            // Log the request to the sidebar
-            const entry = document.createElement('div');
-            entry.className = "p-1 border-l-2 border-blue-500 bg-blue-500/5 mb-1 animate-fadeIn";
-            entry.innerHTML = `<span class="text-zinc-600">[${timestamp}]</span> <span class="text-blue-400">FETCH</span><br><span class="break-all">${url}</span>`;
-            logContainer.prepend(entry);
+            const logEntry = document.createElement('div');
+            logEntry.className = "p-1 bg-zinc-800 border-l border-blue-500 mb-1 break-all";
+            logEntry.innerHTML = `<span class="text-blue-400">[REQ]</span> ${url}`;
+            logBox.prepend(logEntry);
 
             return originalFetch.apply(window, args);
         };
 
-        // 2. THE INJECTOR: Fetch and Load the site into DOM
-        async function loadScramjet() {
+        // 2. DIRECT DOM INJECTOR
+        async function injectWebsite() {
             try {
-                // We use a CORS proxy to fetch the HTML (Netlify may need this)
-                const response = await originalFetch(`https://api.allorigins.win/get?url=${encodeURIComponent(ZROK_URL)}`);
-                const data = await response.json();
-                const html = data.contents;
+                // Fetching the raw website content directly
+                const response = await originalFetch(TARGET_URL);
+                const htmlText = await response.text();
 
-                const root = document.getElementById('scramjet-root');
+                const viewport = document.getElementById('scramjet-viewport');
                 
-                // Set the base URL so relative assets (js/css) load correctly from zrok
-                const base = document.createElement('base');
-                base.href = ZROK_URL;
-                document.head.appendChild(base);
+                // Fix relative paths (CSS/JS) by setting the BASE tag
+                const baseTag = document.createElement('base');
+                baseTag.href = TARGET_URL;
+                document.head.appendChild(baseTag);
 
-                // Inject the HTML
-                root.innerHTML = html;
+                // Inject the HTML string into the viewport
+                viewport.innerHTML = htmlText;
 
-                // Execute scripts found in the injected HTML
-                Array.from(root.querySelectorAll("script")).forEach( oldScript => {
-                    const newScript = document.createElement("script");
-                    Array.from(oldScript.attributes).forEach( attr => newScript.setAttribute(attr.name, attr.value) );
-                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
-                });
+                // Re-trigger script execution
+                // Simply setting innerHTML doesn't run <script> tags
+                const scripts = Array.from(viewport.querySelectorAll('script'));
+                for (const oldScript of scripts) {
+                    const newScript = document.createElement('script');
+                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                    
+                    if (oldScript.src) {
+                        newScript.src = oldScript.src;
+                    } else {
+                        newScript.textContent = oldScript.textContent;
+                    }
+                    
+                    document.body.appendChild(newScript);
+                    oldScript.parentNode.removeChild(oldScript);
+                }
 
-                document.getElementById('loading-overlay').remove();
-                
-                const successMsg = document.createElement('div');
-                successMsg.className = "text-green-500 font-bold p-2";
-                successMsg.innerText = "DOM INJECTED SUCCESSFULLY";
-                logContainer.prepend(successMsg);
+                const msg = document.createElement('div');
+                msg.className = "text-green-500 p-2 font-bold";
+                msg.innerText = "SUCCESS: DOM LOADED";
+                logBox.prepend(msg);
 
             } catch (err) {
-                console.error(err);
-                logContainer.innerHTML = `<div class="text-red-500 font-bold p-2">CRITICAL ERROR: Could not fetch zrok source.</div>`;
+                const errorEntry = document.createElement('div');
+                errorEntry.className = "text-red-500 p-2";
+                errorEntry.innerText = "CORS ERROR: The server blocked direct fetching. You must enable CORS on Scramjet.";
+                logBox.prepend(errorEntry);
+                console.error("Fetch failed:", err);
             }
         }
 
-        loadScramjet();
+        injectWebsite();
     </script>
 </body>
 </html>
