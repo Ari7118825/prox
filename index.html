@@ -3,124 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scramjet Stealth UI</title>
+    <title>Scramjet Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        body { background-color: #09090b; }
         iframe { background: white; width: 100%; height: 100%; border: none; }
-        .active-tab { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        .glass { background: rgba(24, 24, 27, 0.8); backdrop-filter: blur(12px); }
     </style>
 </head>
-<body class="bg-zinc-950 text-zinc-200 font-sans h-screen flex flex-col overflow-hidden">
+<body class="text-zinc-100 font-sans h-screen flex flex-col overflow-hidden">
 
-    <header class="bg-zinc-900 border-b border-zinc-800 p-3 flex items-center gap-4 shadow-md">
-        <div class="flex gap-2 text-zinc-500 mr-4">
-            <div class="w-3 h-3 rounded-full bg-red-500"></div>
-            <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
-            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+    <header class="glass border-b border-zinc-800 p-4 flex items-center justify-between shadow-2xl z-50">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/20">
+                <i class="fa-solid fa-bolt-lightning text-white text-sm"></i>
+            </div>
+            <h1 class="text-sm font-bold tracking-tighter uppercase text-zinc-400">Scramjet Portal</h1>
         </div>
         
-        <div class="flex-1 flex items-center bg-zinc-800 rounded-lg border border-zinc-700 px-4 py-1.5 gap-3">
-            <i class="fa-solid fa-lock text-zinc-500 text-xs"></i>
-            <input id="urlInput" type="text" 
-                   class="bg-transparent border-none outline-none text-sm w-full text-zinc-300" 
-                   placeholder="Enter URL to fetch (e.g. networkchuck.com)">
-            <button onclick="navigate()" class="text-zinc-500 hover:text-blue-400">
-                <i class="fa-solid fa-rotate-right"></i>
+        <div class="flex-1 max-w-2xl mx-8">
+            <div class="relative flex items-center bg-zinc-900/50 rounded-full border border-zinc-800 px-5 py-2 group focus-within:border-blue-500/50 transition-all">
+                <i class="fa-solid fa-link text-zinc-600 mr-3 text-xs"></i>
+                <input id="urlInput" type="text" 
+                       class="bg-transparent border-none outline-none text-sm w-full text-zinc-200 placeholder-zinc-600" 
+                       placeholder="Enter destination URL...">
+                <button onclick="navigate()" class="ml-2 text-zinc-500 hover:text-blue-400 transition-colors">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <button onclick="location.reload()" class="text-zinc-500 hover:text-white text-xs transition-colors">
+                <i class="fa-solid fa-arrow-rotate-right"></i>
             </button>
         </div>
-
-        <button onclick="toggleDevTools()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-md transition">
-            <i class="fa-solid fa-code mr-2"></i> DEVTOOLS
-        </button>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
-        
-        <aside class="w-80 bg-zinc-900 border-r border-zinc-800 flex flex-col">
-            <div class="p-3 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-                <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Traffic Monitor</span>
-                <span id="logCount" class="bg-zinc-800 text-blue-400 text-[10px] px-2 py-0.5 rounded-full">0</span>
+    <main class="flex-1 relative">
+        <div id="welcome" class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 z-10 transition-opacity duration-500">
+            <div class="text-center">
+                <div class="inline-flex p-4 rounded-full bg-blue-500/10 mb-6">
+                    <i class="fa-solid fa-shield-halved text-blue-500 text-4xl"></i>
+                </div>
+                <h2 class="text-2xl font-semibold mb-2 text-white">Scramjet Hub Ready</h2>
+                <p class="text-zinc-500 text-sm max-w-xs mx-auto">Enter any URL above to fetch it securely through your private zrok tunnel.</p>
             </div>
-            <div id="networkLogs" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
-                <div class="text-zinc-600 italic">No traffic detected...</div>
-            </div>
-        </aside>
-
-        <main class="flex-1 bg-white relative">
-            <div id="emptyState" class="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center z-10">
-                <i class="fa-solid fa-globe text-zinc-800 text-9xl mb-6"></i>
-                <p class="text-zinc-500">Enter a URL above to route through Scramjet</p>
-            </div>
-            <iframe id="browserFrame" src="about:blank"></iframe>
-        </main>
-    </div>
+        </div>
+        <iframe id="browserFrame" src="about:blank"></iframe>
+    </main>
 
     <script>
+        // Adjust this if your zrok path changes
         const SCRAMJET_BASE = 'https://yumiscramjetafc02c3096bf.share.zrok.io/scramjet/';
-        const logsContainer = document.getElementById('networkLogs');
         const frame = document.getElementById('browserFrame');
-        const emptyState = document.getElementById('emptyState');
-        let requestCount = 0;
-
-        // Initialize Eruda
-        eruda.init();
-        const erudaElement = document.querySelector('div[role="dialog"]'); // Target the hidden eruda panel
-
-        function toggleDevTools() {
-            if (eruda._isInit) {
-                eruda.show();
-            }
-        }
-
-        function addLog(url, type = 'FETCH') {
-            requestCount++;
-            document.getElementById('logCount').innerText = requestCount;
-            const div = document.createElement('div');
-            div.className = "p-1.5 bg-zinc-800/40 border-l-2 border-blue-500 rounded-sm mb-1 animate-in fade-in duration-300";
-            div.innerHTML = `
-                <div class="flex justify-between text-[9px] mb-1">
-                    <span class="text-blue-400 font-bold">${type}</span>
-                    <span class="text-zinc-600">${new Date().toLocaleTimeString()}</span>
-                </div>
-                <div class="break-all text-zinc-300 leading-tight">${url}</div>
-            `;
-            logsContainer.prepend(div);
-            if(logsContainer.children.length > 50) logsContainer.lastChild.remove();
-        }
+        const welcome = document.getElementById('welcome');
+        const input = document.getElementById('urlInput');
 
         function navigate() {
-            let rawUrl = document.getElementById('urlInput').value.trim();
-            if (!rawUrl) return;
+            let url = input.value.trim();
+            if (!url) return;
 
-            // Ensure protocol exists
-            if (!rawUrl.startsWith('http')) {
-                rawUrl = 'https://' + rawUrl;
+            // Simple URL normalization
+            if (!url.startsWith('http')) {
+                url = 'https://' + url;
             }
 
-            // Construct Scramjet API URL
-            const encodedTarget = encodeURIComponent(rawUrl);
-            const finalPath = SCRAMJET_BASE + encodedTarget;
-
-            emptyState.classList.add('hidden');
-            addLog(finalPath, 'NAVIGATE');
-            frame.src = finalPath;
+            // Hide the welcome screen and load the site through your Scramjet path
+            welcome.style.opacity = '0';
+            setTimeout(() => welcome.classList.add('hidden'), 500);
+            
+            frame.src = SCRAMJET_BASE + encodeURIComponent(url);
         }
 
-        // Catch clicks on the "Enter" key
-        document.getElementById('urlInput').addEventListener('keypress', (e) => {
+        // Allow 'Enter' key to trigger navigation
+        input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') navigate();
         });
-
-        // Intercept all outgoing traffic from the main window
-        const originalFetch = window.fetch;
-        window.fetch = async (...args) => {
-            addLog(args[0], 'API_CALL');
-            return originalFetch.apply(window, args);
-        };
-
-        console.log("Scramjet Stealth UI ready. Route: " + SCRAMJET_BASE);
     </script>
 </body>
 </html>
