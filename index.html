@@ -2,84 +2,103 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Scramjet Request Sniffer</title>
+    <title>Scramjet Virtual DOM Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Prevents the injected Scramjet CSS from ruining your sidebar */
+        #scramjet-container { all: revert; position: relative; }
+        #log-entries::-webkit-scrollbar { width: 4px; }
+        #log-entries::-webkit-scrollbar-thumb { background: #333; }
+    </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col h-screen">
+<body class="bg-zinc-950 text-zinc-300 flex h-screen overflow-hidden">
 
-    <div class="p-4 bg-black border-b border-green-500">
-        <h1 class="text-green-500 font-mono text-xl">NETWORK SNIFFER ACTIVE</h1>
-        <p class="text-xs text-gray-400">Target: https://yumiscramjetafc02c3096bf.share.zrok.io/</p>
-    </div>
-
-    <div class="flex flex-1 overflow-hidden">
+    <aside class="w-80 bg-zinc-900 border-r border-zinc-800 flex flex-col shadow-2xl z-50">
+        <div class="p-4 border-b border-zinc-800 bg-zinc-900/50">
+            <h1 class="text-green-500 font-mono font-bold uppercase tracking-tighter">Traffic Sniffer</h1>
+            <p class="text-[10px] text-zinc-500 italic">Capturing virtual DOM requests...</p>
+        </div>
         
-        <div class="w-2/3 h-full bg-white">
-            <iframe id="scramjetFrame" 
-                    src="https://yumiscramjetafc02c3096bf.share.zrok.io/" 
-                    class="w-full h-full border-none"></iframe>
+        <div id="log-entries" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
+            <div class="text-zinc-600">Initializing sniffer...</div>
         </div>
 
-        <div class="w-1/3 h-full bg-black border-l border-gray-800 flex flex-col">
-            <div class="p-2 bg-gray-900 text-xs font-bold uppercase tracking-widest text-gray-500">Outgoing API Requests</div>
-            <div id="requestLog" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] space-y-2">
-                <div class="text-blue-400 italic">Waiting for iframe activity...</div>
-            </div>
-            <div class="p-4 border-t border-gray-800">
-                <button onclick="extractAPI()" class="w-full bg-green-600 py-2 text-black font-bold rounded">FIND API BASE URL</button>
+        <div class="p-4 bg-zinc-900 border-t border-zinc-800">
+            <button onclick="location.reload()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs py-2 rounded transition">
+                Clear & Reload
+            </button>
+        </div>
+    </aside>
+
+    <main class="flex-1 relative overflow-auto bg-white">
+        <div id="loading-overlay" class="absolute inset-0 bg-zinc-950 flex items-center justify-center z-40">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
+                <p class="text-zinc-500 animate-pulse">Fetching zrok DOM...</p>
             </div>
         </div>
-    </div>
+        <div id="scramjet-root"></div>
+    </main>
 
     <script>
-        const log = document.getElementById('requestLog');
-        const frame = document.getElementById('scramjetFrame');
+        const ZROK_URL = 'https://yumiscramjetafc02c3096bf.share.zrok.io/';
+        const logContainer = document.getElementById('log-entries');
 
-        // This function attempts to "Reach into" the iframe to wrap its fetch
-        // NOTE: This only works if CORS is enabled on your server!
-        function startSniffing() {
-            try {
-                const iframeWin = frame.contentWindow;
-                
-                // Intercept Fetch inside the iframe
-                const oldFetch = iframeWin.fetch;
-                iframeWin.fetch = function(...args) {
-                    const url = args[0];
-                    addLog(`FETCH: ${url}`);
-                    return oldFetch.apply(this, args);
-                };
-
-                // Intercept XHR (older API calls)
-                const oldOpen = iframeWin.XMLHttpRequest.prototype.open;
-                iframeWin.XMLHttpRequest.prototype.open = function(method, url) {
-                    addLog(`XHR [${method}]: ${url}`);
-                    return oldOpen.apply(this, arguments);
-                };
-
-                addLog("Sniffer attached successfully.", "success");
-            } catch (e) {
-                addLog("CORS BLOCKED: Browser prevented sniffing. See fix below.", "error");
-            }
-        }
-
-        function addLog(msg, type = 'info') {
+        // 1. THE SNIFFER: Override Global Fetch before loading anything
+        const originalFetch = window.fetch;
+        window.fetch = async (...args) => {
+            const url = args[0];
+            const timestamp = new Date().toLocaleTimeString().split(' ')[0];
+            
+            // Log the request to the sidebar
             const entry = document.createElement('div');
-            entry.className = type === 'error' ? 'text-red-500' : (type === 'success' ? 'text-green-400' : 'text-gray-300');
-            entry.innerHTML = `<span class="text-gray-600">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
-            log.prepend(entry);
-        }
+            entry.className = "p-1 border-l-2 border-blue-500 bg-blue-500/5 mb-1 animate-fadeIn";
+            entry.innerHTML = `<span class="text-zinc-600">[${timestamp}]</span> <span class="text-blue-400">FETCH</span><br><span class="break-all">${url}</span>`;
+            logContainer.prepend(entry);
 
-        function extractAPI() {
-            const entries = Array.from(log.querySelectorAll('div')).map(d => d.innerText);
-            const apiMatch = entries.find(e => e.includes('/api/v'));
-            if (apiMatch) {
-                alert("Found Potential API: " + apiMatch.split(' ')[2]);
-            } else {
-                alert("No API path detected yet. Interact with the UI inside the iframe!");
+            return originalFetch.apply(window, args);
+        };
+
+        // 2. THE INJECTOR: Fetch and Load the site into DOM
+        async function loadScramjet() {
+            try {
+                // We use a CORS proxy to fetch the HTML (Netlify may need this)
+                const response = await originalFetch(`https://api.allorigins.win/get?url=${encodeURIComponent(ZROK_URL)}`);
+                const data = await response.json();
+                const html = data.contents;
+
+                const root = document.getElementById('scramjet-root');
+                
+                // Set the base URL so relative assets (js/css) load correctly from zrok
+                const base = document.createElement('base');
+                base.href = ZROK_URL;
+                document.head.appendChild(base);
+
+                // Inject the HTML
+                root.innerHTML = html;
+
+                // Execute scripts found in the injected HTML
+                Array.from(root.querySelectorAll("script")).forEach( oldScript => {
+                    const newScript = document.createElement("script");
+                    Array.from(oldScript.attributes).forEach( attr => newScript.setAttribute(attr.name, attr.value) );
+                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                });
+
+                document.getElementById('loading-overlay').remove();
+                
+                const successMsg = document.createElement('div');
+                successMsg.className = "text-green-500 font-bold p-2";
+                successMsg.innerText = "DOM INJECTED SUCCESSFULLY";
+                logContainer.prepend(successMsg);
+
+            } catch (err) {
+                console.error(err);
+                logContainer.innerHTML = `<div class="text-red-500 font-bold p-2">CRITICAL ERROR: Could not fetch zrok source.</div>`;
             }
         }
 
-        frame.onload = startSniffing;
+        loadScramjet();
     </script>
 </body>
 </html>
